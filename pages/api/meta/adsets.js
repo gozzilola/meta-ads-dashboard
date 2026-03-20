@@ -1,15 +1,15 @@
 export default async function handler(req, res) {
-  const { accountId, since, until } = req.query
+  const { accountId, preset, since, until } = req.query
   const token = process.env.META_ACCESS_TOKEN
   if (!token) return res.status(500).json({ error: 'Token de Meta no configurado' })
   if (!accountId) return res.status(400).json({ error: 'accountId requerido' })
 
   try {
-    const insightRange = since && until
-      ? `insights.time_range({"since":"${since}","until":"${until}"})`
-      : `insights.date_preset(last_30d)`
+    const insightParam = since && until
+      ? `time_range({"since":"${since}","until":"${until}"})`
+      : `date_preset(${preset || 'today'})`
 
-    const fields = `id,name,status,campaign_id,campaign{name},daily_budget,lifetime_budget,budget_remaining,${insightRange}{spend,impressions,reach,clicks,ctr,cpm,cpc,actions,frequency}`
+    const fields = `id,name,status,campaign_id,campaign{name},daily_budget,lifetime_budget,budget_remaining,insights.${insightParam}{spend,impressions,reach,clicks,ctr,cpm,cpc,actions,frequency}`
 
     const url = `https://graph.facebook.com/v19.0/${accountId}/adsets?fields=${fields}&limit=100&access_token=${token}`
 
