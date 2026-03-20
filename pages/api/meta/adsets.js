@@ -5,13 +5,13 @@ export default async function handler(req, res) {
   if (!accountId) return res.status(400).json({ error: 'accountId requerido' })
 
   try {
-    const timeRange = since && until
-      ? `time_range={"since":"${since}","until":"${until}"}`
-      : `date_preset=last_30d`
+    const insightRange = since && until
+      ? `insights.time_range({"since":"${since}","until":"${until}"})`
+      : `insights.date_preset(last_30d)`
 
-    const fields = `id,name,status,campaign_id,campaign{name},daily_budget,lifetime_budget,budget_remaining,insights{spend,impressions,reach,clicks,ctr,cpm,cpc,actions,frequency}`
+    const fields = `id,name,status,campaign_id,campaign{name},daily_budget,lifetime_budget,budget_remaining,${insightRange}{spend,impressions,reach,clicks,ctr,cpm,cpc,actions,frequency}`
 
-    const url = `https://graph.facebook.com/v19.0/${accountId}/adsets?fields=${fields}&${timeRange}&limit=100&access_token=${token}`
+    const url = `https://graph.facebook.com/v19.0/${accountId}/adsets?fields=${fields}&limit=100&access_token=${token}`
 
     const response = await fetch(url)
     const data = await response.json()
