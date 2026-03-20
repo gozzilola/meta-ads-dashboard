@@ -76,7 +76,7 @@ export default function Campaigns() {
   const [selectedAccount, setSelectedAccount] = useState('')
   const [activeTab, setActiveTab] = useState(0)
   const [statusFilter, setStatusFilter] = useState('ALL')
-  const [datePreset, setDatePreset] = useState(4)
+  const [datePreset, setDatePreset] = useState(0)
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
