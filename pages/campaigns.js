@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Layout from '../components/Layout'
 
 const DATE_PRESETS = [
@@ -49,12 +49,6 @@ const ALL_COLUMNS = [
   { key: 'available', label: 'Disponible' },
 ]
 
-function getDate(daysAgo) {
-  const d = new Date()
-  d.setDate(d.getDate() - daysAgo)
-  return d.toISOString().split('T')[0]
-}
-
 const OBJECTIVE_LABELS = {
   'OUTCOME_LEADS': 'Clientes potenciales',
   'OUTCOME_SALES': 'Ventas',
@@ -71,27 +65,44 @@ const OBJECTIVE_LABELS = {
   'LEAD_GENERATION': 'Generación de leads',
 }
 
+function getDate(daysAgo) {
+  const d = new Date()
+  d.setDate(d.getDate() - daysAgo)
+  return d.toISOString().split('T')[0]
+}
+
 export default function Campaigns() {
   const [accounts, setAccounts] = useState([])
   const [selectedAccount, setSelectedAccount] = useState('')
   const [activeTab, setActiveTab] = useState(0)
   const [statusFilter, setStatusFilter] = useState('ALL')
-  const [datePreset, setDatePreset] = useState(2)
+  const [datePreset, setDatePreset] = useState(4)
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [visibleCols, setVisibleCols] = useState(['name','status','spend','results','cost_per_result','daily_budget','impressions','reach','ctr','cpc','budget_client','available'])
+  const [colOrder, setColOrder] = useState([])
+  const [colWidths, setColWidths] = useState({})
   const [showColPicker, setShowColPicker] = useState(false)
   const [clientBudgets, setClientBudgets] = useState({})
   const [editingBudget, setEditingBudget] = useState(null)
   const [editingStatus, setEditingStatus] = useState(null)
   const [newBudgetVal, setNewBudgetVal] = useState('')
+  const [dragCol, setDragCol] = useState(null)
+  const [dragOverCol, setDragOverCol] = useState(null)
+  const resizeRef = useRef({})
 
   useEffect(() => {
     const saved = JSON.parse(localStorage.getItem('clientBudgets') || '{}')
     setClientBudgets(saved)
+    const savedWidths = JSON.parse(localStorage.getItem('colWidths') || '{}')
+    setColWidths(savedWidths)
     fetchAccounts()
   }, [])
+
+  useEffect(() => {
+    setColOrder(visibleCols)
+  }, [visibleCols])
 
   useEffect(() => { if (selectedAccount) fetchData() }, [selectedAccount, activeTab, statusFilter, datePreset])
 
@@ -149,10 +160,46 @@ export default function Campaigns() {
     return n.toLocaleString('es-AR')
   }
 
+  // Drag columns
+  function onDragStart(key) { setDragCol(key) }
+  function onDragOver(e, key) { e.preventDefault(); setDragOverCol(key) }
+  function onDrop(key) {
+    if (!dragCol || dragCol === key) return
+    const newOrder = [...colOrder]
+    const fromIdx = newOrder.indexOf(dragCol)
+    const toIdx = newOrder.indexOf(key)
+    newOrder.splice(fromIdx, 1)
+    newOrder.splice(toIdx, 0, dragCol)
+    setColOrder(newOrder)
+    setDragCol(null)
+    setDragOverCol(null)
+  }
+
+  // Resize columns
+  function startResize(e, key) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = colWidths[key] || 150
+    function onMove(ev) {
+      const newW = Math.max(80, startW + ev.clientX - startX)
+      setColWidths(prev => {
+        const updated = {...prev, [key]: newW}
+        localStorage.setItem('colWidths', JSON.stringify(updated))
+        return updated
+      })
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   function renderCell(item, col) {
     if (col==='name') return (
       <div>
-        <div style={{fontWeight:500}}>{item.name}</div>
+        <div style={{fontWeight:500}}>{item.name || '—'}</div>
         {item.campaign_name && <div style={{fontSize:'11px',color:'var(--text2)',marginTop:'2px'}}>↳ {item.campaign_name}</div>}
         {item.adset_name && <div style={{fontSize:'11px',color:'var(--text2)'}}>↳ {item.adset_name}</div>}
       </div>
@@ -175,7 +222,7 @@ export default function Campaigns() {
     if (col==='objective') return OBJECTIVE_LABELS[item.objective] || item.objective || '—'
     if (col==='spend') return fmt(item.spend,'currency')
     if (col==='cost_per_result') return item.cost_per_result && parseFloat(item.cost_per_result)>0 ? fmt(item.cost_per_result,'currency') : '—'
-    if (col==='cost_per_3sec' || col==='cost_per_2sec') return item[col] && parseFloat(item[col])>0 ? fmt(item[col],'currency') : '—'
+    if (col==='cost_per_3sec'||col==='cost_per_2sec') return item[col] && parseFloat(item[col])>0 ? fmt(item[col],'currency') : '—'
     if (col==='ctr') return fmt(item.ctr,'percent')
     if (col==='cpc'||col==='cpm') return fmt(item[col],'currency')
     if (col==='frequency'||col==='video_avg_watch') return fmt(item[col],'decimal')
@@ -210,7 +257,9 @@ export default function Campaigns() {
     return item[col] || '—'
   }
 
-  const cols = ALL_COLUMNS.filter(c => visibleCols.includes(c.key))
+  const orderedCols = colOrder.length > 0
+    ? colOrder.map(k => ALL_COLUMNS.find(c => c.key===k)).filter(Boolean)
+    : ALL_COLUMNS.filter(c => visibleCols.includes(c.key))
 
   return (
     <Layout title="Campañas">
@@ -228,7 +277,7 @@ export default function Campaigns() {
           {DATE_PRESETS.map((p,i)=><option key={i} value={i}>{p.label}</option>)}
         </select>
         <button onClick={()=>setShowColPicker(!showColPicker)}
-          style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'8px',padding:'8px 14px',color:'var(--text)',fontSize:'13px'}}>
+          style={{background:showColPicker?'var(--accent)':'var(--bg2)',border:'1px solid var(--border)',borderRadius:'8px',padding:'8px 14px',color:showColPicker?'white':'var(--text)',fontSize:'13px'}}>
           ⊞ Columnas
         </button>
         <button onClick={fetchData}
@@ -239,13 +288,19 @@ export default function Campaigns() {
 
       {showColPicker && (
         <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'10px',padding:'16px',marginBottom:'16px'}}>
-          <div style={{fontSize:'13px',fontWeight:'500',marginBottom:'12px'}}>Columnas visibles</div>
-          <div style={{display:'flex',flexWrap:'wrap',gap:'10px'}}>
+          <div style={{fontSize:'13px',fontWeight:'500',marginBottom:'12px',color:'var(--text2)'}}>
+            Seleccioná las columnas a mostrar
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
             {ALL_COLUMNS.map(c=>(
-              <label key={c.key} style={{display:'flex',alignItems:'center',fontSize:'13px',cursor:'pointer'}}>
+              <label key={c.key} style={{display:'flex',alignItems:'center',gap:'10px',fontSize:'13px',cursor:'pointer',padding:'6px 10px',borderRadius:'6px',background:visibleCols.includes(c.key)?'var(--bg3)':'transparent'}}>
                 <input type="checkbox" checked={visibleCols.includes(c.key)}
-                  onChange={e=>setVisibleCols(prev=>e.target.checked?[...prev,c.key]:prev.filter(k=>k!==c.key))} />
-                <span style={{marginLeft:'6px'}}>{c.label}</span>
+                  onChange={e=>{
+                    const updated = e.target.checked ? [...visibleCols,c.key] : visibleCols.filter(k=>k!==c.key)
+                    setVisibleCols(updated)
+                    setColOrder(updated)
+                  }} />
+                <span style={{color:visibleCols.includes(c.key)?'var(--text)':'var(--text2)'}}>{c.label}</span>
               </label>
             ))}
           </div>
@@ -267,24 +322,39 @@ export default function Campaigns() {
         {loading ? (
           <div style={{padding:'40px',textAlign:'center',color:'var(--text2)',fontSize:'13px'}}>Cargando datos desde Meta...</div>
         ) : (
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'13px'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'13px',tableLayout:'fixed'}}>
             <thead>
               <tr>
-                {cols.map(c=>(
-                  <th key={c.key} style={{padding:'10px 16px',textAlign:'left',color:'var(--text2)',fontWeight:'500',
-                    fontSize:'12px',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:'var(--bg3)'}}>
+                {orderedCols.map(c=>(
+                  <th key={c.key}
+                    draggable
+                    onDragStart={()=>onDragStart(c.key)}
+                    onDragOver={e=>onDragOver(e,c.key)}
+                    onDrop={()=>onDrop(c.key)}
+                    style={{
+                      padding:'10px 16px',textAlign:'left',color:'var(--text2)',fontWeight:'500',
+                      fontSize:'12px',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',
+                      background:dragOverCol===c.key?'var(--bg2)':'var(--bg3)',
+                      cursor:'grab',position:'relative',
+                      width: colWidths[c.key] ? `${colWidths[c.key]}px` : 'auto',
+                      userSelect:'none',
+                    }}>
                     {c.label}
+                    <div
+                      onMouseDown={e=>startResize(e,c.key)}
+                      style={{position:'absolute',right:0,top:0,bottom:0,width:'5px',cursor:'col-resize',background:'transparent'}}
+                    />
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {data.length===0
-                ? <tr><td colSpan={cols.length} style={{padding:'40px',textAlign:'center',color:'var(--text2)'}}>No hay datos para mostrar</td></tr>
+                ? <tr><td colSpan={orderedCols.length} style={{padding:'40px',textAlign:'center',color:'var(--text2)'}}>No hay datos para mostrar</td></tr>
                 : data.map(item=>(
                   <tr key={item.id} style={{borderBottom:'1px solid var(--border)'}}>
-                    {cols.map(c=>(
-                      <td key={c.key} style={{padding:'10px 16px',whiteSpace:'nowrap'}}>
+                    {orderedCols.map(c=>(
+                      <td key={c.key} style={{padding:'10px 16px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                         {renderCell(item,c.key)}
                       </td>
                     ))}
