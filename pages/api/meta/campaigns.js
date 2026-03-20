@@ -5,14 +5,16 @@ export default async function handler(req, res) {
   if (!accountId) return res.status(400).json({ error: 'accountId requerido' })
 
   try {
-    const fields = `id,name,status,objective,daily_budget,lifetime_budget,budget_remaining,insights{spend,impressions,reach,clicks,ctr,cpm,cpc,frequency,actions,cost_per_action_type,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p95_watched_actions,video_p100_watched_actions,video_play_actions,video_continuous_2_sec_watched_actions,video_thruplay_watched_actions,unique_video_continuous_2_sec_watched_actions,video_avg_time_watched_actions,cost_per_thruplay}`
-
     const today = new Date().toISOString().split('T')[0]
-    const sinceDate = since || today
-    const untilDate = until || today
-    const timeRange = encodeURIComponent(JSON.stringify({ since: sinceDate, until: untilDate }))
+    const s = since || today
+    const u = until || today
+    const timeRangeStr = `{"since":"${s}","until":"${u}"}`
 
-    let url = `https://graph.facebook.com/v19.0/${accountId}/campaigns?fields=${fields}&time_range=${timeRange}&limit=100&access_token=${token}`
+    const insightFields = `spend,impressions,reach,clicks,ctr,cpm,cpc,frequency,actions,cost_per_action_type,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p95_watched_actions,video_p100_watched_actions,video_play_actions,video_continuous_2_sec_watched_actions,video_thruplay_watched_actions,unique_video_continuous_2_sec_watched_actions,video_avg_time_watched_actions,cost_per_thruplay`
+
+    const fields = `id,name,status,objective,daily_budget,lifetime_budget,budget_remaining,insights.time_range(${timeRangeStr}){${insightFields}}`
+
+    let url = `https://graph.facebook.com/v19.0/${accountId}/campaigns?fields=${fields}&limit=100&access_token=${token}`
     if (status && status !== 'ALL') url += `&effective_status=["${status}"]`
 
     const response = await fetch(url)
