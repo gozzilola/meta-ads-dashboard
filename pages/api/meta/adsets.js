@@ -5,10 +5,13 @@ export default async function handler(req, res) {
   if (!accountId) return res.status(400).json({ error: 'accountId requerido' })
 
   try {
-    const fields = 'id,name,status,campaign_id,campaign{name},daily_budget,lifetime_budget,budget_remaining,insights.date_preset(last_30d){spend,impressions,reach,clicks,ctr,cpm,cpc,actions,frequency}'
+    const timeRange = since && until
+      ? `time_range={"since":"${since}","until":"${until}"}`
+      : `date_preset=last_30d`
 
-    let url = `https://graph.facebook.com/v19.0/${accountId}/adsets?fields=${fields}&limit=100&access_token=${token}`
-    if (since && until) url += `&time_range={"since":"${since}","until":"${until}"}`
+    const fields = `id,name,status,campaign_id,campaign{name},daily_budget,lifetime_budget,budget_remaining,insights{spend,impressions,reach,clicks,ctr,cpm,cpc,actions,frequency}`
+
+    const url = `https://graph.facebook.com/v19.0/${accountId}/adsets?fields=${fields}&${timeRange}&limit=100&access_token=${token}`
 
     const response = await fetch(url)
     const data = await response.json()
@@ -16,6 +19,7 @@ export default async function handler(req, res) {
 
     const adsets = (data.data || []).map(s => {
       const ins = s.insights?.data?.[0] || {}
+      const actions = ins.actions || []
       return {
         id: s.id,
         name: s.name,
@@ -32,11 +36,12 @@ export default async function handler(req, res) {
         cpm: ins.cpm || '0',
         cpc: ins.cpc || '0',
         frequency: ins.frequency || '0',
+        results: actions[0]?.value || '0',
       }
     })
 
     res.json({ adsets })
   } catch (err) {
-    res.status(500).json({ error: 'Error al obtener conjuntos' })
+    res.status(500).json({ error: 'Error al obtener conjuntos: ' + err.message })
   }
 }
