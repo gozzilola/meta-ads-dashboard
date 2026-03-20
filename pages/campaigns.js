@@ -2,11 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import Layout from '../components/Layout'
 
 const DATE_PRESETS = [
-  { label: 'Hoy', since: 0, until: 0 },
-  { label: 'Ayer', since: 1, until: 1 },
-  { label: 'Últimos 7 días', since: 7, until: 0 },
-  { label: 'Últimos 14 días', since: 14, until: 0 },
-  { label: 'Últimos 30 días', since: 30, until: 0 },
+  { label: 'Hoy', preset: 'today' },
+  { label: 'Ayer', preset: 'yesterday' },
+  { label: 'Últimos 7 días', preset: 'last_7d' },
+  { label: 'Últimos 14 días', preset: 'last_14d' },
+  { label: 'Últimos 30 días', preset: 'last_30d' },
+  { label: 'Este mes', preset: 'this_month' },
+  { label: 'Mes pasado', preset: 'last_month' },
 ]
 
 const STATUS_OPTIONS = [
@@ -114,23 +116,21 @@ export default function Campaigns() {
   }
 
   async function fetchData() {
-    setLoading(true)
-    setError('')
-    const preset = DATE_PRESETS[datePreset]
-    const since = getDate(preset.since)
-    const until = getDate(preset.until)
-    try {
-      const endpoint = activeTab===0 ? 'campaigns' : activeTab===1 ? 'adsets' : 'ads'
-      let url = `/api/meta/${endpoint}?accountId=${selectedAccount}&since=${since}&until=${until}`
-      if (statusFilter!=='ALL' && activeTab===0) url += `&status=${statusFilter}`
-      const res = await fetch(url)
-      const d = await res.json()
-      if (d.error) { setError(d.error); setData([]); return }
-      const raw = d.campaigns || d.adsets || d.ads || []
-      setData(raw.filter(item => statusFilter==='ALL' || item.status===statusFilter))
-    } catch { setError('Error al cargar datos') }
-    setLoading(false)
-  }
+  setLoading(true)
+  setError('')
+  const preset = DATE_PRESETS[datePreset]
+  try {
+    const endpoint = activeTab===0 ? 'campaigns' : activeTab===1 ? 'adsets' : 'ads'
+    let url = `/api/meta/${endpoint}?accountId=${selectedAccount}&preset=${preset.preset}`
+    if (statusFilter!=='ALL' && activeTab===0) url += `&status=${statusFilter}`
+    const res = await fetch(url)
+    const d = await res.json()
+    if (d.error) { setError(d.error); setData([]); return }
+    const raw = d.campaigns || d.adsets || d.ads || []
+    setData(raw.filter(item => statusFilter==='ALL' || item.status===statusFilter))
+  } catch { setError('Error al cargar datos') }
+  setLoading(false)
+}
 
   async function toggleStatus(item) {
     const newStatus = item.status==='ACTIVE' ? 'PAUSED' : 'ACTIVE'
