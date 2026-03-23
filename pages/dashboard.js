@@ -1,14 +1,22 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Layout from '../components/Layout'
 
 function formatCurrency(value) {
   const n = parseFloat(value || 0)
-  return `$${n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `$${n.toLocaleString('es-AR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`
 }
 
 function formatNumber(value) {
   const n = parseFloat(value || 0)
   return n.toLocaleString('es-AR')
+}
+
+function getAuthToken() {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('token')
 }
 
 export default function Dashboard() {
@@ -29,10 +37,12 @@ export default function Dashboard() {
   const [selectedCampaignIds, setSelectedCampaignIds] = useState([])
   const [search, setSearch] = useState('')
 
+  const [loadingConfig, setLoadingConfig] = useState(true)
+  const [savingConfig, setSavingConfig] = useState(false)
+
   useEffect(() => {
-    const savedTabs = JSON.parse(localStorage.getItem('dashTabs') || '[]')
-    setTabs(savedTabs)
     fetchAccounts()
+    fetchDashboardConfig()
   }, [])
 
   useEffect(() => {
@@ -55,6 +65,7 @@ export default function Dashboard() {
       fetchCampaigns(selectedAccountId)
     } else {
       setCampaigns([])
+      setCampaignError('')
     }
   }, [selectedAccountId])
 
@@ -70,6 +81,74 @@ export default function Dashboard() {
     setLoadingAccounts(false)
   }
 
+  async function fetchDashboardConfig() {
+    setLoadingConfig(true)
+
+    try {
+      const token = getAuthToken()
+
+      if (!token) {
+        setTabs([])
+        setActiveTab(0)
+        setLoadingConfig(false)
+        return
+      }
+
+      const res = await fetch('/api/config/get?section=dashboard', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+
+      const data = await res.json()
+
+      if (data?.config) {
+        const savedTabs = Array.isArray(data.config.tabs) ? data.config.tabs : []
+        const savedActiveTab =
+          typeof data.config.activeTab === 'number' ? data.config.activeTab : 0
+
+        setTabs(savedTabs)
+        setActiveTab(savedTabs.length ? Math.min(savedActiveTab, savedTabs.length - 1) : 0)
+      } else {
+        setTabs([])
+        setActiveTab(0)
+      }
+    } catch {
+      setTabs([])
+      setActiveTab(0)
+    }
+
+    setLoadingConfig(false)
+  }
+
+  async function saveDashboardConfig(nextTabs, nextActiveTab) {
+    try {
+      const token = getAuthToken()
+      if (!token) return
+
+      setSavingConfig(true)
+
+      await fetch('/api/config/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          section: 'dashboard',
+          config: {
+            tabs: nextTabs,
+            activeTab: nextActiveTab
+          }
+        })
+      })
+    } catch (err) {
+      console.error('Error guardando dashboard:', err)
+    } finally {
+      setSavingConfig(false)
+    }
+  }
+
   async function fetchCampaigns(accountId) {
     setLoadingCampaigns(true)
     setCampaignError('')
@@ -78,6 +157,7 @@ export default function Dashboard() {
       const res = await fetch(
         `/api/meta/campaigns?accountId=${encodeURIComponent(accountId)}&preset=last_30d&status=ALL`
       )
+
       const data = await res.json()
 
       if (data.error) {
@@ -96,8 +176,8 @@ export default function Dashboard() {
 
   function persistTabs(updatedTabs, nextActiveTab = activeTab) {
     setTabs(updatedTabs)
-    localStorage.setItem('dashTabs', JSON.stringify(updatedTabs))
     setActiveTab(nextActiveTab)
+    saveDashboardConfig(updatedTabs, nextActiveTab)
   }
 
   function saveTab() {
@@ -136,6 +216,7 @@ export default function Dashboard() {
   function handleAccountChange(value) {
     setSelectedAccountId(value)
     setSelectedCampaignIds([])
+
     updateCurrentTab({
       accountId: value,
       campaignIds: []
@@ -148,6 +229,7 @@ export default function Dashboard() {
       : [...selectedCampaignIds, campaignId]
 
     setSelectedCampaignIds(updated)
+
     updateCurrentTab({
       accountId: selectedAccountId,
       campaignIds: updated
@@ -158,6 +240,7 @@ export default function Dashboard() {
     const visibleIds = filteredCampaigns.map((c) => c.id)
     const merged = Array.from(new Set([...selectedCampaignIds, ...visibleIds]))
     setSelectedCampaignIds(merged)
+
     updateCurrentTab({
       accountId: selectedAccountId,
       campaignIds: merged
@@ -166,6 +249,7 @@ export default function Dashboard() {
 
   function clearSelection() {
     setSelectedCampaignIds([])
+
     updateCurrentTab({
       accountId: selectedAccountId,
       campaignIds: []
@@ -305,7 +389,18 @@ export default function Dashboard() {
             marginBottom: '20px'
           }}
         >
-          <h2 style={{ fontSize: '15px', fontWeight: '600' }}>Vistas personalizadas</h2>
+          <div>
+            <h2 style={{ fontSize: '15px', fontWeight: '600', marginBottom: '6px' }}>
+              Vistas personalizadas
+            </h2>
+
+            {(loadingConfig || savingConfig) && (
+              <div style={{ fontSize: '12px', color: 'var(--text2)' }}>
+                {loadingConfig ? 'Cargando configuración...' : 'Guardando cambios...'}
+              </div>
+            )}
+          </div>
+
           <button
             onClick={() => setShowNewTab(true)}
             style={{
@@ -369,7 +464,11 @@ export default function Dashboard() {
           </div>
         )}
 
-        {tabs.length === 0 ? (
+        {loadingConfig ? (
+          <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text2)' }}>
+            Cargando configuración guardada...
+          </div>
+        ) : tabs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text2)' }}>
             <div style={{ fontSize: '32px', marginBottom: '12px' }}>◈</div>
             <div
