@@ -5,7 +5,7 @@ function buildInsightParam(preset, since, until) {
   return `date_preset(${preset || 'today'})`
 }
 
-function getActionValue(list = [], actionTypes = []) {
+function getActionValueByTypes(list = [], actionTypes = []) {
   for (const actionType of actionTypes) {
     const found = list.find((item) => item.action_type === actionType)
     if (found && found.value != null) {
@@ -14,6 +14,12 @@ function getActionValue(list = [], actionTypes = []) {
     }
   }
   return 0
+}
+
+function getMetricValue(list = []) {
+  const value = list?.[0]?.value
+  const parsed = parseFloat(value)
+  return Number.isNaN(parsed) ? 0 : parsed
 }
 
 function getCampaignResultTypes(objective, actions = []) {
@@ -54,14 +60,16 @@ function getCampaignResultTypes(objective, actions = []) {
   return objectiveActionMap[objective] || []
 }
 
-function getMetricValue(list = []) {
-  const value = list?.[0]?.value
-  const parsed = parseFloat(value)
-  return Number.isNaN(parsed) ? 0 : parsed
-}
-
 export default async function handler(req, res) {
-  const { accountId, status, preset, since, until } = req.query
+  const {
+    accountId,
+    status,
+    preset,
+    datePreset,
+    since,
+    until
+  } = req.query
+
   const token = process.env.META_ACCESS_TOKEN
 
   if (!token) {
@@ -73,7 +81,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const insightParam = buildInsightParam(preset, since, until)
+    const selectedPreset = datePreset || preset || 'today'
+    const insightParam = buildInsightParam(selectedPreset, since, until)
 
     const insightFields = [
       'spend',
@@ -134,9 +143,12 @@ export default async function handler(req, res) {
       const costPerAction = insights.cost_per_action_type || []
       const resultTypes = getCampaignResultTypes(campaign.objective || '', actions)
 
-      const results = getActionValue(actions, resultTypes)
-      const costPerResult = getActionValue(costPerAction, resultTypes)
-      const igFollows = getActionValue(actions, ['instagram_profile_follow', 'follow'])
+      const results = getActionValueByTypes(actions, resultTypes)
+      const costPerResult = getActionValueByTypes(costPerAction, resultTypes)
+      const igFollows = getActionValueByTypes(actions, [
+        'instagram_profile_follow',
+        'follow'
+      ])
 
       return {
         id: campaign.id,
@@ -144,9 +156,17 @@ export default async function handler(req, res) {
         status: campaign.status,
         effective_status: campaign.effective_status,
         objective: campaign.objective || '',
-        daily_budget: campaign.daily_budget ? (parseInt(campaign.daily_budget, 10) / 100).toFixed(2) : null,
-        lifetime_budget: campaign.lifetime_budget ? (parseInt(campaign.lifetime_budget, 10) / 100).toFixed(2) : null,
-        budget_remaining: campaign.budget_remaining ? (parseInt(campaign.budget_remaining, 10) / 100).toFixed(2) : null,
+
+        daily_budget: campaign.daily_budget
+          ? (parseInt(campaign.daily_budget, 10) / 100).toFixed(2)
+          : null,
+        lifetime_budget: campaign.lifetime_budget
+          ? (parseInt(campaign.lifetime_budget, 10) / 100).toFixed(2)
+          : null,
+        budget_remaining: campaign.budget_remaining
+          ? (parseInt(campaign.budget_remaining, 10) / 100).toFixed(2)
+          : null,
+
         spend: insights.spend || '0',
         impressions: insights.impressions || '0',
         reach: insights.reach || '0',
@@ -155,8 +175,29 @@ export default async function handler(req, res) {
         cpm: insights.cpm || '0',
         cpc: insights.cpc || '0',
         frequency: insights.frequency || '0',
+
         results: String(results),
         cost_per_result: costPerResult > 0 ? costPerResult.toFixed(2) : '0',
+
+        messaging_conversation_started: getActionValueByTypes(actions, [
+          'onsite_conversion.messaging_conversation_started_7d'
+        ]),
+        new_messaging_contacts: getActionValueByTypes(actions, [
+          'onsite_conversion.messaging_first_reply',
+          'onsite_conversion.new_messaging_connection'
+        ]),
+        total_messaging_contacts: getActionValueByTypes(actions, [
+          'onsite_conversion.total_messaging_connection'
+        ]),
+        messaging_conversation_replied: getActionValueByTypes(actions, [
+          'onsite_conversion.messaging_conversation_replied_7d'
+        ]),
+        recurring_messaging_contacts: getActionValueByTypes(actions, [
+          'onsite_conversion.recurring_messaging_connection',
+          'onsite_conversion.messaging_recurring_contact',
+          'onsite_conversion.recurring_messaging_conversation'
+        ]),
+
         video_p25: getMetricValue(insights.video_p25_watched_actions),
         video_p50: getMetricValue(insights.video_p50_watched_actions),
         video_p75: getMetricValue(insights.video_p75_watched_actions),
@@ -165,7 +206,9 @@ export default async function handler(req, res) {
         video_plays: getMetricValue(insights.video_play_actions),
         video_2sec: getMetricValue(insights.video_continuous_2_sec_watched_actions),
         video_3sec: getMetricValue(insights.video_thruplay_watched_actions),
-        video_2sec_unique: getMetricValue(insights.unique_video_continuous_2_sec_watched_actions),
+        video_2sec_unique: getMetricValue(
+          insights.unique_video_continuous_2_sec_watched_actions
+        ),
         video_avg_watch: insights.video_avg_time_watched_actions?.[0]?.value || '0',
         cost_per_3sec: insights.cost_per_thruplay?.[0]?.value || '0',
         cost_per_2sec: '0',
@@ -173,7 +216,7 @@ export default async function handler(req, res) {
       }
     })
 
-    return res.json({ campaigns })
+    return res.status(200).json({ campaigns })
   } catch (err) {
     return res.status(500).json({ error: 'Error: ' + err.message })
   }
