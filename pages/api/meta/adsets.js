@@ -5,7 +5,7 @@ function buildInsightParam(preset, since, until) {
   return `date_preset(${preset || 'today'})`
 }
 
-function getActionValue(list = [], actionTypes = []) {
+function getActionValueByTypes(list = [], actionTypes = []) {
   for (const actionType of actionTypes) {
     const found = list.find((item) => item.action_type === actionType)
     if (found && found.value != null) {
@@ -20,6 +20,44 @@ function getMetricValue(list = []) {
   const value = list?.[0]?.value
   const parsed = parseFloat(value)
   return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function getMessagingMetrics(actions = []) {
+  const messagingConversationStarted = getActionValueByTypes(actions, [
+    'onsite_conversion.messaging_conversation_started_7d'
+  ])
+
+  const newMessagingContacts = getActionValueByTypes(actions, [
+    'onsite_conversion.messaging_first_reply',
+    'onsite_conversion.new_messaging_connection'
+  ])
+
+  const totalMessagingContacts = getActionValueByTypes(actions, [
+    'onsite_conversion.total_messaging_connection'
+  ])
+
+  const messagingConversationReplied = getActionValueByTypes(actions, [
+    'onsite_conversion.messaging_conversation_replied_7d'
+  ])
+
+  const recurringMessagingContactsDirect = getActionValueByTypes(actions, [
+    'onsite_conversion.recurring_messaging_connection',
+    'onsite_conversion.messaging_recurring_contact',
+    'onsite_conversion.recurring_messaging_conversation'
+  ])
+
+  const recurringMessagingContacts =
+    recurringMessagingContactsDirect > 0
+      ? recurringMessagingContactsDirect
+      : Math.max(totalMessagingContacts - newMessagingContacts, 0)
+
+  return {
+    messagingConversationStarted,
+    newMessagingContacts,
+    totalMessagingContacts,
+    messagingConversationReplied,
+    recurringMessagingContacts
+  }
 }
 
 function getResultTypesByGoal({ optimizationGoal, objective, actions }) {
@@ -38,7 +76,7 @@ function getResultTypesByGoal({ optimizationGoal, objective, actions }) {
     LEAD_GENERATION: ['lead', 'onsite_conversion.lead_grouped'],
     LINK_CLICKS: ['link_click'],
     LANDING_PAGE_VIEWS: ['landing_page_view', 'link_click'],
-    THRUPLAY: ['video_thruplay_watched_actions', 'video_view'],
+    THRUPLAY: ['video_view'],
     REACH: ['reach'],
     PAGE_LIKES: ['like'],
     OFFSITE_CONVERSIONS: ['purchase', 'offsite_conversion.fb_pixel_purchase', 'omni_purchase']
@@ -75,7 +113,7 @@ function getResultTypesByGoal({ optimizationGoal, objective, actions }) {
 }
 
 export default async function handler(req, res) {
-  const { accountId, preset, since, until } = req.query
+  const { accountId, preset, datePreset, since, until } = req.query
   const token = process.env.META_ACCESS_TOKEN
 
   if (!token) {
@@ -87,7 +125,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const insightParam = buildInsightParam(preset, since, until)
+    const selectedPreset = datePreset || preset || 'today'
+    const insightParam = buildInsightParam(selectedPreset, since, until)
 
     const insightFields = [
       'spend',
@@ -118,9 +157,9 @@ export default async function handler(req, res) {
       'name',
       'status',
       'effective_status',
-      'optimization_goal',
       'campaign_id',
       'campaign{name,objective}',
+      'optimization_goal',
       'daily_budget',
       'lifetime_budget',
       'budget_remaining',
@@ -144,14 +183,16 @@ export default async function handler(req, res) {
       const insights = adset.insights?.data?.[0] || {}
       const actions = insights.actions || []
       const costPerAction = insights.cost_per_action_type || []
+
       const resultTypes = getResultTypesByGoal({
         optimizationGoal: adset.optimization_goal || '',
         objective: adset.campaign?.objective || '',
         actions
       })
 
-      const results = getActionValue(actions, resultTypes)
-      const costPerResult = getActionValue(costPerAction, resultTypes)
+      const results = getActionValueByTypes(actions, resultTypes)
+      const costPerResult = getActionValueByTypes(costPerAction, resultTypes)
+      const messagingMetrics = getMessagingMetrics(actions)
 
       return {
         id: adset.id,
@@ -159,12 +200,17 @@ export default async function handler(req, res) {
         status: adset.status,
         effective_status: adset.effective_status,
         objective: adset.campaign?.objective || '',
-        optimization_goal: adset.optimization_goal || '',
         campaign_id: adset.campaign_id,
         campaign_name: adset.campaign?.name || '',
-        daily_budget: adset.daily_budget ? (parseInt(adset.daily_budget, 10) / 100).toFixed(2) : null,
-        lifetime_budget: adset.lifetime_budget ? (parseInt(adset.lifetime_budget, 10) / 100).toFixed(2) : null,
-        budget_remaining: adset.budget_remaining ? (parseInt(adset.budget_remaining, 10) / 100).toFixed(2) : null,
+        daily_budget: adset.daily_budget
+          ? (parseInt(adset.daily_budget, 10) / 100).toFixed(2)
+          : null,
+        lifetime_budget: adset.lifetime_budget
+          ? (parseInt(adset.lifetime_budget, 10) / 100).toFixed(2)
+          : null,
+        budget_remaining: adset.budget_remaining
+          ? (parseInt(adset.budget_remaining, 10) / 100).toFixed(2)
+          : null,
         spend: insights.spend || '0',
         impressions: insights.impressions || '0',
         reach: insights.reach || '0',
@@ -175,6 +221,13 @@ export default async function handler(req, res) {
         frequency: insights.frequency || '0',
         results: String(results),
         cost_per_result: costPerResult > 0 ? costPerResult.toFixed(2) : '0',
+
+        messaging_conversation_started: messagingMetrics.messagingConversationStarted,
+        new_messaging_contacts: messagingMetrics.newMessagingContacts,
+        total_messaging_contacts: messagingMetrics.totalMessagingContacts,
+        messaging_conversation_replied: messagingMetrics.messagingConversationReplied,
+        recurring_messaging_contacts: messagingMetrics.recurringMessagingContacts,
+
         video_p25: getMetricValue(insights.video_p25_watched_actions),
         video_p50: getMetricValue(insights.video_p50_watched_actions),
         video_p75: getMetricValue(insights.video_p75_watched_actions),
@@ -183,7 +236,9 @@ export default async function handler(req, res) {
         video_plays: getMetricValue(insights.video_play_actions),
         video_2sec: getMetricValue(insights.video_continuous_2_sec_watched_actions),
         video_3sec: getMetricValue(insights.video_thruplay_watched_actions),
-        video_2sec_unique: getMetricValue(insights.unique_video_continuous_2_sec_watched_actions),
+        video_2sec_unique: getMetricValue(
+          insights.unique_video_continuous_2_sec_watched_actions
+        ),
         video_avg_watch: insights.video_avg_time_watched_actions?.[0]?.value || '0',
         cost_per_3sec: insights.cost_per_thruplay?.[0]?.value || '0',
         cost_per_2sec: '0',
@@ -191,7 +246,7 @@ export default async function handler(req, res) {
       }
     })
 
-    return res.json({ adsets })
+    return res.status(200).json({ adsets })
   } catch (err) {
     return res.status(500).json({ error: 'Error: ' + err.message })
   }
