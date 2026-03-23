@@ -25,6 +25,11 @@ const ALL_COLUMNS = [
   { key: 'objective', label: 'Objetivo' },
   { key: 'spend', label: 'Importe gastado' },
   { key: 'results', label: 'Resultados' },
+  { key: 'messaging_conversation_started', label: 'Conversaciones con mensajes iniciadas' },
+  { key: 'new_messaging_contacts', label: 'Nuevos contactos de mensajes' },
+  { key: 'total_messaging_contacts', label: 'Contactos de mensajes' },
+  { key: 'messaging_conversation_replied', label: 'Conversaciones con mensajes respondidas' },
+  { key: 'recurring_messaging_contacts', label: 'Contactos de mensajes recurrentes' },
   { key: 'cost_per_result', label: 'Costo por resultado' },
   { key: 'daily_budget', label: 'Presupuesto' },
   { key: 'impressions', label: 'Impresiones' },
@@ -48,9 +53,8 @@ const ALL_COLUMNS = [
   { key: 'cost_per_2sec', label: 'Costo por video 2s' },
   { key: 'ig_follows', label: 'Seguimientos Instagram' },
   { key: 'budget_client', label: 'Presupuesto cliente' },
-  { key: 'available', label: 'Disponible' }
+  { key: 'available', label: 'Disponible' },
 ]
-
 const OBJECTIVE_LABELS = {
   OUTCOME_LEADS: 'Clientes potenciales',
   OUTCOME_SALES: 'Ventas',
@@ -285,9 +289,25 @@ export default function Campaigns() {
     if (col === 'daily_budget') return item.daily_budget ? fmt(item.daily_budget, 'currency') : item.lifetime_budget ? `${fmt(item.lifetime_budget, 'currency')} (total)` : '—'
     if (col === 'results') return item.results && parseFloat(item.results) > 0 ? fmt(item.results) : '—'
 
-    if (['video_plays', 'video_2sec', 'video_3sec', 'video_2sec_unique', 'video_p25', 'video_p50', 'video_p75', 'video_p95', 'video_p100', 'ig_follows'].includes(col)) {
-      return item[col] && parseFloat(item[col]) > 0 ? fmt(item[col]) : '—'
-    }
+    if ([
+  'messaging_conversation_started',
+  'new_messaging_contacts',
+  'total_messaging_contacts',
+  'messaging_conversation_replied',
+  'recurring_messaging_contacts',
+  'video_plays',
+  'video_2sec',
+  'video_3sec',
+  'video_2sec_unique',
+  'video_p25',
+  'video_p50',
+  'video_p75',
+  'video_p95',
+  'video_p100',
+  'ig_follows'
+].includes(col)) {
+  return item[col] && parseFloat(item[col]) > 0 ? fmt(item[col]) : '—'
+}
 
     if (col === 'budget_client') {
       const val = clientBudgets[item.id]
