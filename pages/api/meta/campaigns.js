@@ -1,4 +1,4 @@
-unction buildInsightParam(preset, since, until) {
+function buildInsightParam(preset, since, until) {
   if (since && until) {
     return `time_range(${JSON.stringify({ since, until })})`
   }
