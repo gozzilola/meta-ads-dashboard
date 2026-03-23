@@ -150,6 +150,34 @@ export default async function handler(req, res) {
         'follow'
       ])
 
+      const messagingConversationStarted = getActionValueByTypes(actions, [
+        'onsite_conversion.messaging_conversation_started_7d'
+      ])
+
+      const newMessagingContacts = getActionValueByTypes(actions, [
+        'onsite_conversion.messaging_first_reply',
+        'onsite_conversion.new_messaging_connection'
+      ])
+
+      const totalMessagingContacts = getActionValueByTypes(actions, [
+        'onsite_conversion.total_messaging_connection'
+      ])
+
+      const messagingConversationReplied = getActionValueByTypes(actions, [
+        'onsite_conversion.messaging_conversation_replied_7d'
+      ])
+
+      const recurringMessagingContactsDirect = getActionValueByTypes(actions, [
+        'onsite_conversion.recurring_messaging_connection',
+        'onsite_conversion.messaging_recurring_contact',
+        'onsite_conversion.recurring_messaging_conversation'
+      ])
+
+      const recurringMessagingContacts =
+        recurringMessagingContactsDirect > 0
+          ? recurringMessagingContactsDirect
+          : Math.max(totalMessagingContacts - newMessagingContacts, 0)
+
       return {
         id: campaign.id,
         name: campaign.name,
@@ -179,24 +207,11 @@ export default async function handler(req, res) {
         results: String(results),
         cost_per_result: costPerResult > 0 ? costPerResult.toFixed(2) : '0',
 
-        messaging_conversation_started: getActionValueByTypes(actions, [
-          'onsite_conversion.messaging_conversation_started_7d'
-        ]),
-        new_messaging_contacts: getActionValueByTypes(actions, [
-          'onsite_conversion.messaging_first_reply',
-          'onsite_conversion.new_messaging_connection'
-        ]),
-        total_messaging_contacts: getActionValueByTypes(actions, [
-          'onsite_conversion.total_messaging_connection'
-        ]),
-        messaging_conversation_replied: getActionValueByTypes(actions, [
-          'onsite_conversion.messaging_conversation_replied_7d'
-        ]),
-        recurring_messaging_contacts: getActionValueByTypes(actions, [
-          'onsite_conversion.recurring_messaging_connection',
-          'onsite_conversion.messaging_recurring_contact',
-          'onsite_conversion.recurring_messaging_conversation'
-        ]),
+        messaging_conversation_started: messagingConversationStarted,
+        new_messaging_contacts: newMessagingContacts,
+        total_messaging_contacts: totalMessagingContacts,
+        messaging_conversation_replied: messagingConversationReplied,
+        recurring_messaging_contacts: recurringMessagingContacts,
 
         video_p25: getMetricValue(insights.video_p25_watched_actions),
         video_p50: getMetricValue(insights.video_p50_watched_actions),
